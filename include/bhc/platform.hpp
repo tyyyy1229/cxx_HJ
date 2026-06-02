@@ -1,0 +1,31 @@
+
+#pragma once
+
+#ifndef _BHC_INCLUDED_
+#error "This file must be included via #include <bhc/bhc.hpp>!"
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+// Select which standard library
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef STD
+#define BHC_UNDEF_STD_AFTER 1
+#define STD std
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+// Shared library setup
+////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+#if defined(BHC_DLL_EXPORT)
+#define BHC_API __declspec(dllexport)
+#elif defined(BHC_DLL_IMPORT)
+#define BHC_API __declspec(dllimport)
+#else
+#define BHC_API
+#endif
+#else
+#define BHC_API
+#endif
