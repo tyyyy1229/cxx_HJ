@@ -151,9 +151,18 @@ void bellhopParam::setNSD(int NSD)
     this->NSD = NSD;
 }
 
-void bellhopParam::set_PrtFile(const std::string& filepath)
+void bellhopParam::set_EnvFile(const std::string& filepath)
 {
-    this->prtFilePath = filepath;
+    if(g_prtFile) {
+        g_prtFile->close();
+        delete g_prtFile;
+    }
+    g_prtFile = new std::ofstream(filepath + ".env");
+    if(!g_prtFile->good()) {
+        std::cerr << "Warning: Could not open prt file: " << filepath << ".env" << std::endl;
+        delete g_prtFile;
+        g_prtFile = nullptr;
+    }
 }
 
 

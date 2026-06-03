@@ -20,26 +20,12 @@ struct SSP
         float Distance; // Distance from the starting point
 };
 
-// struct ati_bty
-// {
-//     //One depth corresponds to one distance
-//     float x;
-//     float depth; 
-    
-// };
-
 struct ati_bty
 {
-    // range and depth
+    //One depth corresponds to one distance
     float x;
-    float depth;
-
-    // geoacoustic parameters for long-format BTY: 'LL'
-    float alphaR = 1500.0f;
-    float betaR  = 0.0f;
-    float rho    = 1.0f;
-    float alphaI = 0.0f;
-    float betaI  = 0.0f;
+    float depth; 
+    
 };
 
 
@@ -111,8 +97,6 @@ class bellhopParam
         float zbox;//grid box zmax(depth) 
         float rbox;//grid box rmax(range) 
         std::vector<ati_bty>btyPts ; //sea depths  changes with distance 
-        char btyInterpType = 'L';   // first char of BTY type, e.g. 'L' or 'C'
-        char btyFormatType = 'L';   // second char of BTY type, 'S' or 'L'
         std::vector <ati_bty>atiPts;//  sea surface changes with distance
         std::vector<float> angle; //Beam angle
         std::string prtFilePath;
@@ -152,7 +136,6 @@ class bellhopParam
         void set_rBox(float rBox);
         //
         void set_btyPts( std::vector<ati_bty>btyPts);// set sea depths  changes with distance 
-        void set_btyType(char interpType, char formatType);
         void set_atiPts(std::vector <ati_bty>atiPts);//  sea surface changes with distance
         void set_angle(std::vector<float> angle);//Beam angle
         void set_SSP( std::vector<SSP>  SSPLIst );//set ssp
@@ -161,7 +144,7 @@ class bellhopParam
         void set_bottomLine(Boundary_Line bottomLine);
         void set_surfaceLine(Boundary_Line bottomLine);
 
-        void set_PrtFile(const std::string& filepath);
+        void set_EnvFile(const std::string& filepath);
         
 
 

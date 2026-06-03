@@ -29,6 +29,8 @@
 #include "mode/eigen.hpp"
 #include "mode/arr.hpp"
 
+#include "bhc/license.hpp"
+
 namespace bhc {
 
 namespace module {
@@ -367,6 +369,18 @@ template<bool O3D, bool R3D> inline mode::ModeModule<O3D, R3D> *GetMode(
 template<bool O3D, bool R3D> bool run(
     bhcParams<O3D> &params, bhcOutputs<O3D, R3D> &outputs)
 {
+        /*
+     * 核心层授权校验。
+     *
+     * 这里是 bhc::run() 的入口。
+     *
+     * 即使客户绕过 bellhopParam，直接调用 bhc::run()，
+     * 也会先执行这里的授权检查。
+     */
+    if (!bhc::license::check()) {
+        EXTWARN("授权校验失败：%s\n", bhc::license::last_error().c_str());
+        return false;
+    }
     try {
         Stopwatch sw(GetInternal(params));
 

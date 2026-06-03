@@ -1,6 +1,6 @@
 
-#include "/home/ty/bellhopcxx/bellhopcxx_copy/src/mode/fieldimpl.hpp"
-#include "/home/ty/bellhopcxx/bellhopcxx_copy/src/trace.hpp"
+#include "/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/src/mode/fieldimpl.hpp"
+#include "/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/src/trace.hpp"
 
 #include <vector>
 
