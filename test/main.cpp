@@ -1,184 +1,9 @@
-// #include "demo.h"
-
-
-// int main()
-// {
-//     std::string filepathTL = "/home/wzw/bellhop_old1204/20251207/bellhopcxx_copy/output/TL_result";//不需要后缀
-//     std::string filepathRay = "/home/wzw/bellhop_old1204/20251207/bellhopcxx_copy/output/Ray_result";
-//  std::string filepathEigen = "/home/wzw/bellhop_old1204/20251207/bellhopcxx_copy/output/EigenRay_result";
-// std::string filepathArr = "/home/wzw/bellhop_old1204/20251207/bellhopcxx_copy/output/Arr_result";//不需要后缀
-//     // normalSea(filepathTL);
-//     // test_eigenRay(filepathTL);l
-//     test_flatwav_R(filepathRay);
-//     // test_flatwav_E(filepathEigen);
-
-//     // test_flatwav_C(fistlepathTL);
-//     //  test_flatwav_A(filepathArr);
-// }
-
 #include<ctime>
 #include <algorithm> // 用于清理字符串中的单引号
 #include <iostream>
 #include<fstream>
 #include "bellhopParam.h"//用的地方include这个头文件
 #include "bhc/bhc.hpp"
-
-void load_SSP(bellhopParam& parm, const std::string& filepath, const std::vector<float>& zVector) {
-    std::ifstream infile(filepath);
-    if (!infile.is_open()) {
-        std::cerr << "Error: 无法打开声速文件 " << filepath << std::endl;
-        return;
-    }
-
-    int numRanges;
-    infile >> numRanges;
-    
-    // 关键修正1：把第一行 175 后面的所有干扰文本（如 'Q'）全盘吃掉，防止卡死
-    std::string dummyLine;
-    std::getline(infile, dummyLine);
-
-    int numDepths = zVector.size();
-    std::vector<float> ranges(numRanges);
-    for (int r = 0; r < numRanges; ++r) {
-        infile >> ranges[r];
-        // 关键修正2：如果遇到夹杂的文本导致读取失败，自动跳过它
-        if (infile.fail()) {
-            infile.clear(); // 清除报错状态
-            std::string skipStr;
-            infile >> skipStr; // 把非数字的字符串作为垃圾吃掉
-            r--; // 让循环重试当前位置
-            continue;
-        }
-    }
-
-    // 读取巨大的二维声速矩阵
-    std::vector<std::vector<float>> cMatrix(numDepths, std::vector<float>(numRanges));
-    for (int d = 0; d < numDepths; ++d) {
-        for (int r = 0; r < numRanges; ++r) {
-            infile >> cMatrix[d][r];
-            if (infile.fail()) {
-                infile.clear();
-                std::string skipStr;
-                infile >> skipStr;
-                r--;
-            }
-        }
-    }
-
-    // 组装成 bellhopParam 需要的结构
-    std::vector<SSP> sspList;
-    for (int r = 0; r < numRanges; ++r) {
-        SSP ssp_col;
-        ssp_col.Distance = ranges[r];
-        ssp_col.zSSPV = zVector;
-        
-        std::vector<float> colSpeed(numDepths);
-        for (int d = 0; d < numDepths; ++d) {
-            colSpeed[d] = cMatrix[d][r];
-        }
-        ssp_col.cSSPV = colSpeed;
-        
-        sspList.push_back(ssp_col);
-    }
-
-    // 交给封装类
-    parm.set_SSP(sspList);
-    infile.close();
-    
-    // 关键修正3：打印前3个距离点，如果输出是 0, 0, 0 就说明文件格式还有大问题
-    std::cout << "=== DEBUG SSP ===" << std::endl;
-    std::cout << "成功组装 " << sspList.size() << " 个声速剖面" << std::endl;
-    if (numRanges >= 3) {
-        std::cout << "前三个距离点是: " << ranges[0] << ", " << ranges[1] << ", " << ranges[2] << std::endl;
-    }
-    std::cout << "=================" << std::endl;
-}
-
-// ==========================================
-// 临时函数：用于读取多维海底地形 (Bathymetry)
-// ==========================================
-void load_BTY(bellhopParam& parm, const std::string& filepath) {
-    std::ifstream infile(filepath);
-    if (!infile.is_open()) {
-        std::cerr << "Error: 无法打开地形文件 " << filepath << std::endl;
-        return;
-    }
-
-    std::string interpType;
-    infile >> interpType; 
-    
-    // 清理单引号，提取底质插值方式
-    std::string cleanType = interpType;
-    cleanType.erase(std::remove(cleanType.begin(), cleanType.end(), '\''), cleanType.end());
-    char type1 = (cleanType.length() >= 2) ? cleanType[1] : ' ';
-
-    // 吞掉第一行后续的垃圾字符
-    std::string dummyLine;
-    std::getline(infile, dummyLine);
-
-    int numPoints;
-    infile >> numPoints;
-    std::getline(infile, dummyLine); // 吞掉点数后面的垃圾字符
-
-    std::vector<ati_bty> btyList;
-    float last_range = -999999.0f; // 记录上一个点的距离
-
-    for (int i = 0; i < numPoints; ++i) {
-        float range, depth;
-        infile >> range >> depth;
-
-        // 【保护机制1】遇到表头文本卡死时，跳过该字符串并重试
-        if (infile.fail()) {
-            infile.clear();
-            std::string skipStr;
-            infile >> skipStr; 
-            i--; 
-            continue;
-        }
-
-        ati_bty pt;
-        pt.x = range;
-        pt.depth = depth;
-
-        // 【保护机制2】防止垂直悬崖或距离倒退 (单调递增修正)
-        // 如果当前距离小于或等于上一个点的距离，强制向后拉开 0.0001 km (约 10 厘米)
-        if (pt.x <= last_range) {
-            pt.x = last_range + 0.0001f; 
-        }
-        last_range = pt.x; // 更新最后距离
-
-        btyList.push_back(pt);
-
-        // 如果底质随距离变化，继续读取后5列参数
-        if (type1 == 'L') {
-            float dummy;
-            for(int k = 0; k < 5; ++k) {
-                infile >> dummy;
-                if (infile.fail()) {
-                    infile.clear();
-                    std::string skipStr;
-                    infile >> skipStr;
-                    k--;
-                }
-            }
-        }
-    }
-
-    // 交给封装类去处理
-    parm.set_btyPts(btyList); 
-    infile.close();
-
-    // 打印调试信息，验证地形是否被正确读取和排列
-    std::cout << "=== DEBUG BTY ===" << std::endl;
-    std::cout << "成功组装 " << btyList.size() << " 个地形点" << std::endl;
-    if (btyList.size() >= 3) {
-        std::cout << "前三个点距离: " 
-                  << btyList[0].x << ", " 
-                  << btyList[1].x << ", " 
-                  << btyList[2].x << std::endl;
-    }
-    std::cout << "=================" << std::endl;
-}
 
 int main()
 {
@@ -219,7 +44,7 @@ int main()
     1400.0, 1500.0, 1750.0, 2000.0, 2250.0, 2500.0, 2750.0, 3000.0, 3250.0, 3500.0, 
     4000.0};
     //读声速梯度
-    load_SSP(parm,"/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/build/test/00013.ssp",zSSPV1);
+    parm.load_SSP("/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/build/test/00013.ssp",zSSPV1);
 
    
     
@@ -243,7 +68,7 @@ int main()
     parm.botopt->secondVal->useBTY();
     
     //读地形
-    load_BTY(parm,"/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/build/test/00013.bty");
+    parm.load_BTY("/home/ty/XiangMu/bellhop_krlin/bellhopcxx_HJ/bellhopcxx_copy/build/test/00013.bty");
 
      
 

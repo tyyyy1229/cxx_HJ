@@ -145,6 +145,10 @@ class bellhopParam
         void set_surfaceLine(Boundary_Line bottomLine);
 
         void set_EnvFile(const std::string& filepath);
+
+        // ========== 0604新增：自加载环境文件类成员函数 ==========
+        void load_SSP(const std::string& filepath, const std::vector<float>& zVector);
+        void load_BTY(const std::string& filepath);
         
 
 

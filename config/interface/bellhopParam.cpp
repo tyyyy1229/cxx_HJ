@@ -941,11 +941,153 @@ void bellhopParam::writeHeader(const std::string& filename)
     {
         std::cerr << "Unable to open the hearder file." << std::endl;
     }
+}
 
+// ===================================================
+// 类成员函数：自主加载二维声速剖面（SSP）矩阵
+// ===================================================
+void bellhopParam::load_SSP(const std::string& filepath, const std::vector<float>& zVector) {
+    std::ifstream infile(filepath);
+    if (!infile.is_open()) {
+        std::cerr << "Error: 无法打开声速文件 " << filepath << std::endl;
+        return;
+    }
 
+    int numRanges;
+    infile >> numRanges;
+    
+    std::string dummyLine;
+    std::getline(infile, dummyLine);
 
+    int numDepths = zVector.size();
+    std::vector<float> ranges(numRanges);
+    for (int r = 0; r < numRanges; ++r) {
+        infile >> ranges[r];
+        if (infile.fail()) {
+            infile.clear();
+            std::string skipStr;
+            infile >> skipStr;
+            r--;
+            continue;
+        }
+    }
 
+    std::vector<std::vector<float>> cMatrix(numDepths, std::vector<float>(numRanges));
+    for (int d = 0; d < numDepths; ++d) {
+        for (int r = 0; r < numRanges; ++r) {
+            infile >> cMatrix[d][r];
+            if (infile.fail()) {
+                infile.clear();
+                std::string skipStr;
+                infile >> skipStr;
+                r--;
+            }
+        }
+    }
 
+    std::vector<SSP> sspList;
+    for (int r = 0; r < numRanges; ++r) {
+        SSP ssp_col;
+        ssp_col.Distance = ranges[r];
+        ssp_col.zSSPV = zVector;
+        
+        std::vector<float> colSpeed(numDepths);
+        for (int d = 0; d < numDepths; ++d) {
+            colSpeed[d] = cMatrix[d][r];
+        }
+        ssp_col.cSSPV = colSpeed;
+        sspList.push_back(ssp_col);
+    }
+
+    // 直接通过 this 调用自身成员，完成数据填充
+    this->set_SSP(sspList);
+    infile.close();
+    
+    std::cout << "=== DEBUG SSP ===" << std::endl;
+    std::cout << "成功组装 " << sspList.size() << " 个声速剖面" << std::endl;
+    if (numRanges >= 3) {
+        std::cout << "前三个距离点是: " << ranges[0] << ", " << ranges[1] << ", " << ranges[2] << std::endl;
+    }
+    std::cout << "=================" << std::endl;
+}
+
+// ===================================================
+// 类成员函数：自主加载多维海底地形 (Bathymetry)
+// ===================================================
+void bellhopParam::load_BTY(const std::string& filepath) {
+    std::ifstream infile(filepath);
+    if (!infile.is_open()) {
+        std::cerr << "Error: 无法打开地形文件 " << filepath << std::endl;
+        return;
+    }
+
+    std::string interpType;
+    infile >> interpType; 
+    
+    std::string cleanType = interpType;
+    cleanType.erase(std::remove(cleanType.begin(), cleanType.end(), '\''), cleanType.end());
+    char type1 = (cleanType.length() >= 2) ? cleanType[1] : ' ';
+
+    std::string dummyLine;
+    std::getline(infile, dummyLine);
+
+    int numPoints;
+    infile >> numPoints;
+    std::getline(infile, dummyLine);
+
+    std::vector<ati_bty> btyList;
+    float last_range = -999999.0f;
+
+    for (int i = 0; i < numPoints; ++i) {
+        float range, depth;
+        infile >> range >> depth;
+
+        if (infile.fail()) {
+            infile.clear();
+            std::string skipStr;
+            infile >> skipStr; 
+            i--; 
+            continue;
+        }
+
+        ati_bty pt;
+        pt.x = range;
+        pt.depth = depth;
+
+        if (pt.x <= last_range) {
+            pt.x = last_range + 0.0001f; 
+        }
+        last_range = pt.x;
+
+        btyList.push_back(pt);
+
+        if (type1 == 'L') {
+            float dummy;
+            for(int k = 0; k < 5; ++k) {
+                infile >> dummy;
+                if (infile.fail()) {
+                    infile.clear();
+                    std::string skipStr;
+                    infile >> skipStr;
+                    k--;
+                }
+            }
+        }
+    }
+
+    // 直接通过 this 调用自身成员，完成地形注入
+    this->set_btyPts(btyList); 
+    infile.close();
+
+    std::cout << "=== DEBUG BTY ===" << std::endl;
+    std::cout << "成功组装 " << btyList.size() << " 个地形点" << std::endl;
+    if (btyList.size() >= 3) {
+        std::cout << "前三个点距离: " 
+                  << btyList[0].x << ", " 
+                  << btyList[1].x << ", " 
+                  << btyList[2].x << std::endl;
+    }
+    std::cout << "=================" << std::endl;
 }
 
 
