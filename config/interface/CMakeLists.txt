@@ -16,7 +16,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_library(${PROJECT_NAME} STATIC  
 ${srcs}
 bellhopParam.cpp
-bellhopParam.cpp
 botopt.cpp
 topopt.cpp
 runtype.cpp
