@@ -282,7 +282,7 @@ void bellhopParam::transformParam()
         //set bty limit, Prevents sound rays from reaching locations where the terrain is not defined
         this->bhc_Params->bdinfo->bot.bd[0].x[0] = this->btyPts[0].x-100;
         this->bhc_Params->bdinfo->bot.bd[0].x[1] = this->btyPts[0].depth;
-        this->bhc_Params->bdinfo->bot.bd[btyNum-1].x[0] = this->btyPts.back().depth+10000;
+        this->bhc_Params->bdinfo->bot.bd[btyNum-1].x[0] = this->btyPts.back().x+10000;
         this->bhc_Params->bdinfo->bot.bd[btyNum-1].x[1] = this->btyPts.back().depth;
         
     }
