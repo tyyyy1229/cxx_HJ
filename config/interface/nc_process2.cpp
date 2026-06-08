@@ -293,6 +293,11 @@ void processLocalOnDemandInterpolate(
     Ny = Nx; // 正方形区域，行点数完全等于列点数
     size_t total_local_cells = Ny * Nx;
 
+    std::cout << "[局部插值] 地理窗口: lon[" << geo_min_lon << "," << geo_max_lon
+              << "] lat[" << geo_min_lat << "," << geo_max_lat << "]"
+              << " 画布:" << Ny << "×" << Nx << "=" << total_local_cells << "格点"
+              << std::endl;
+
     // 无效值判定：NC 声明的 _FillValue / missing_value，或 NaN/Inf，或 ≤ -9990（地学惯用缺省值）
     auto isDataInvalid = [](float val, bool hasFill, float fillVal) -> bool {
         if (!std::isfinite(val))                     return true;  // NaN / Inf
@@ -319,6 +324,10 @@ void processLocalOnDemandInterpolate(
     }
     PlanarKdTree bty_tree(2, bty_cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10)); bty_tree.buildIndex();
 
+    std::cout << "[局部插值] BTY KD-tree: " << bty_cloud.pts.size() << " 有效点";
+    if (bty_cloud.pts.empty()) std::cout << " ⚠ 空!";
+    std::cout << std::endl;
+
     // ---- 【按需提速优化二】海底底质实施完全同理的 1D 下标窗口框选斩断 ----
     std::vector<size_t> valid_sed_is, valid_sed_js;
     for (size_t i = 0; i < sed.lon_size; ++i) { if (sed.lon[i] >= geo_min_lon && sed.lon[i] <= geo_max_lon) valid_sed_is.push_back(i); }
@@ -337,6 +346,10 @@ void processLocalOnDemandInterpolate(
     }
     PlanarKdTree sed_tree(2, sed_cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10)); sed_tree.buildIndex();
 
+    std::cout << "[局部插值] SED KD-tree: " << sed_cloud.pts.size() << " 有效点";
+    if (sed_cloud.pts.empty()) std::cout << " ⚠ 空!";
+    std::cout << std::endl;
+
     // ---- 【按需提速优化三】声速剖面非规则 2D 网格闪电框选过滤 ----
     // 以表层 (lev=0) 为准过滤 fill value，表层无效则整个剖面跳过
     PointCloud2D ssp_geo_cloud;
@@ -354,10 +367,23 @@ void processLocalOnDemandInterpolate(
     }
     PlanarKdTree ssp_tree(2, ssp_geo_cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10)); ssp_tree.buildIndex();
 
+    std::cout << "[局部插值] SSP KD-tree: " << ssp_geo_cloud.pts.size() << " 有效点";
+    if (ssp_geo_cloud.pts.empty()) std::cout << " ⚠ 空!";
+    std::cout << std::endl;
+
+    if (ssp_geo_cloud.pts.empty()) {
+        std::cerr << "[局部插值] ⚠ SSP 无有效网格点，grid_ssp 全部填 NaN。" << std::endl;
+        grid_bty.assign(total_local_cells, std::numeric_limits<float>::quiet_NaN());
+        grid_sed.assign(total_local_cells, std::numeric_limits<float>::quiet_NaN());
+        grid_ssp.assign(ssp.lev_size * total_local_cells, std::numeric_limits<float>::quiet_NaN());
+        return;
+    }
+
     // 4.3 仅在裁剪压缩后的正方形 A 画布内部（仅包含 Ny x Nx 约上百万次）激活局部密集空间线性加权插值
-    grid_bty.assign(total_local_cells, 0.0f); 
+    grid_bty.assign(total_local_cells, 0.0f);
     grid_sed.assign(total_local_cells, 0.0f);
     grid_ssp.assign(ssp.lev_size * total_local_cells, 0.0f);
+    std::cout << "[局部插值] 网格分配完成: " << (ssp.lev_size * total_local_cells * sizeof(float) / 1024.0f / 1024.0f) << " MB" << std::endl;
 
     for (size_t j = 0; j < Ny; ++j) {
         // Y 轴物理范围严格从南侧极值 -1.5*r_max 朝北推进
@@ -373,12 +399,15 @@ void processLocalOnDemandInterpolate(
             // 45纵向水听器深度轴层复用定位句柄
             const size_t num_closest = 4; size_t out_indices[num_closest]; float out_dist_sq[num_closest];
             nanoflann::KNNResultSet<float> resultSet(num_closest); resultSet.init(out_indices, out_dist_sq);
-            float query_pt[2] = { query_x, query_y }; ssp_tree.findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParameters());
+            float query_pt[2] = { query_x, query_y };
+            bool hasNeighbors = ssp_tree.findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParameters());
+            size_t foundN = resultSet.size();  // 实际找到的邻居数
+            if (foundN > num_closest) foundN = num_closest;
 
             size_t ssp_g2d = ssp.lat_size * ssp.lon_size;
             for (size_t k = 0; k < ssp.lev_size; ++k) {
                 float weight_sum = 0.0f; float value_sum = 0.0f; bool exact_match = false;
-                for (size_t n = 0; n < num_closest; ++n) {
+                for (size_t n = 0; n < foundN; ++n) {
                     size_t orig_g_idx = static_cast<size_t>(ssp_geo_cloud.pts[out_indices[n]].value);
                     float raw_sp = ssp.sp_values[k * ssp_g2d + orig_g_idx];
 

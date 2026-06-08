@@ -1109,6 +1109,8 @@ void bellhopParam::load_BTY(const std::string& filepath) {
  bellhopParam::~bellhopParam()
  {
     bhc::finalize(*this->bhc_Params, this->bhc_OutPut);
+    delete this->bhc_Params;
+    this->bhc_Params = nullptr;
     delete this->topopt;
     delete this->botopt;
     delete this->RunType;

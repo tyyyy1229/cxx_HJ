@@ -53,14 +53,70 @@ void configureCommonBellhopParams(
     double bottomRho, double bottomDepth)
 {
     // ---- 环境 ----
-    std::cout << "[DBG] configure: SSP=" << slice.sspList.size()
+    std::vector<SSP> sspList = slice.sspList;
+    float maxSspDepth = slice.maxSspDepth;
+    float maxBtyDepth = slice.maxBtyDepth;
+    float targetDepth  = std::max(maxBtyDepth, maxSspDepth) * 1.05f;
+
+    // SSP 深度层不足以覆盖海底时，线性外推一层
+    if (maxSspDepth < targetDepth && !sspList.empty()) {
+        std::cout << "[SSP延伸] maxSsp=" << maxSspDepth << " maxBty=" << maxBtyDepth
+                  << " target=" << targetDepth
+                  << " → 每个剖面追加1层 (共" << sspList.size() << "个剖面)" << std::endl;
+
+        int nanSkipCount = 0;
+        for (auto& ssp : sspList) {
+            size_t n = ssp.zSSPV.size();
+            if (n < 2) {
+                float c0 = (!ssp.cSSPV.empty() && std::isfinite(ssp.cSSPV.back()))
+                               ? ssp.cSSPV.back() : 1500.0f;
+                ssp.zSSPV.push_back(targetDepth);
+                ssp.cSSPV.push_back(c0);
+                continue;
+            }
+            float z1 = ssp.zSSPV[n - 2], c1 = ssp.cSSPV[n - 2];
+            float z2 = ssp.zSSPV[n - 1], c2 = ssp.cSSPV[n - 1];
+
+            // 跳过末尾 NaN
+            for (int i = static_cast<int>(n) - 3;
+                 i >= 0 && (!std::isfinite(c2) || !std::isfinite(c1)); --i) {
+                if (!std::isfinite(c2)) { z2 = ssp.zSSPV[i + 1]; c2 = ssp.cSSPV[i + 1]; ++nanSkipCount; }
+                if (!std::isfinite(c1)) { z1 = ssp.zSSPV[i];     c1 = ssp.cSSPV[i];     ++nanSkipCount; }
+            }
+            if (!std::isfinite(c2)) c2 = 1500.0f;
+            if (!std::isfinite(c1)) { c1 = c2; z1 = z2 - 1.0f; }
+
+            float slope = (c2 - c1) / (z2 - z1);
+            if (!std::isfinite(slope)) slope = 0.0f;
+            float c_new = c2 + slope * (targetDepth - z2);
+
+            ssp.zSSPV.push_back(targetDepth);
+            ssp.cSSPV.push_back(c_new);
+        }
+
+        if (nanSkipCount) std::cout << "[SSP延伸] ⚠ 跳过末尾NaN " << nanSkipCount << " 次" << std::endl;
+
+        // 抽样打印前3个剖面的延伸结果
+        for (size_t si = 0; si < sspList.size() && si < 3; ++si) {
+            const auto& ssp = sspList[si];
+            size_t n = ssp.zSSPV.size();
+            std::cout << "[SSP延伸] 剖面[" << si << "] "
+                      << "z[n-3]=" << ssp.zSSPV[n-3] << " c=" << ssp.cSSPV[n-3] << " | "
+                      << "z[n-2]=" << ssp.zSSPV[n-2] << " c=" << ssp.cSSPV[n-2] << " | "
+                      << "z[n-1]=" << ssp.zSSPV[n-1] << " c=" << ssp.cSSPV[n-1] << " ←新"
+                      << std::endl;
+        }
+        maxSspDepth = targetDepth;
+    }
+
+    std::cout << "[DBG] configure: SSP=" << sspList.size()
               << " BTY=" << slice.btyPts.size()
               << " RD=" << receiveDepth.size() << "层"
               << " R=" << numRangePts << "点"
-              << " zBox=" << std::max(slice.maxBtyDepth, slice.maxSspDepth) * 1.1f
+              << " zBox=" << std::max(maxBtyDepth, maxSspDepth) * 1.1f
               << " step=" << std::max(static_cast<int>(maxRange / numRangePts), 100)
               << std::endl;
-    parm.set_SSP(slice.sspList);
+    parm.set_SSP(sspList);
     parm.set_btyPts(slice.btyPts);
 
     // ---- 声源 / 接收 ----
@@ -125,9 +181,8 @@ SingleRayPath convertRayInfo(const rayInfo& src) {
     dst.alpha     = static_cast<double>(src.SrcDeclAngle);
     dst.numTopBnc = 0;
     dst.numBotBnc = 0;
-    dst.rr.reserve(src.ray.size());
-    dst.zz.reserve(src.ray.size());
     for (const auto& pos : src.ray) {
+        if (!std::isfinite(pos.x) || !std::isfinite(pos.y)) continue;
         dst.rr.push_back(static_cast<double>(pos.x) / 1000.0);  // m → km
         dst.zz.push_back(static_cast<double>(pos.y));            // m
     }

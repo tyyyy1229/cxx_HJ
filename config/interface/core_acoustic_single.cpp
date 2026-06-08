@@ -297,7 +297,7 @@ SingleAcousticResult computeSingleTL(const SingleAcousticConfig& cfg)
         if (cfg.isRayOutput) {
             std::cout << "[Single-6d] 计算声线..." << std::endl;
             bellhopParam parm;
-            parm.RunType->firstVal->Arrivals_A();
+            parm.RunType->firstVal->Ray_trace_R();
             parm.RunType->secondVal->Geometric_beam_G();
             parm.RunType->thirdVal->NoneOption();
             parm.RunType->forthVal->Point_source_R();
