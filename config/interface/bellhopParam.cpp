@@ -275,16 +275,26 @@ void bellhopParam::transformParam()
         bhc::extsetup_bathymetry(*this->bhc_Params,btyNum);
 
         for (int i =1;i<btyNum-1;i++)
-        {   
+        {
             this->bhc_Params->bdinfo->bot.bd[i].x[0] = this->btyPts[i-1].x;
             this->bhc_Params->bdinfo->bot.bd[i].x[1] = this->btyPts[i-1].depth;
+            // 逐点海底声学参数（来自底质查表, 0=使用全局 bottomLine fallback）
+            this->bhc_Params->bdinfo->bot.bd[i].hs.alphaR = this->btyPts[i-1].alphaR;
+            this->bhc_Params->bdinfo->bot.bd[i].hs.alphaI = this->btyPts[i-1].alphaI;
+            this->bhc_Params->bdinfo->bot.bd[i].hs.rho    = this->btyPts[i-1].rho;
         }
         //set bty limit, Prevents sound rays from reaching locations where the terrain is not defined
         this->bhc_Params->bdinfo->bot.bd[0].x[0] = this->btyPts[0].x-100;
         this->bhc_Params->bdinfo->bot.bd[0].x[1] = this->btyPts[0].depth;
+        this->bhc_Params->bdinfo->bot.bd[0].hs.alphaR = this->btyPts[0].alphaR;
+        this->bhc_Params->bdinfo->bot.bd[0].hs.alphaI = this->btyPts[0].alphaI;
+        this->bhc_Params->bdinfo->bot.bd[0].hs.rho    = this->btyPts[0].rho;
         this->bhc_Params->bdinfo->bot.bd[btyNum-1].x[0] = this->btyPts.back().x+10000;
         this->bhc_Params->bdinfo->bot.bd[btyNum-1].x[1] = this->btyPts.back().depth;
-        
+        this->bhc_Params->bdinfo->bot.bd[btyNum-1].hs.alphaR = this->btyPts.back().alphaR;
+        this->bhc_Params->bdinfo->bot.bd[btyNum-1].hs.alphaI = this->btyPts.back().alphaI;
+        this->bhc_Params->bdinfo->bot.bd[btyNum-1].hs.rho    = this->btyPts.back().rho;
+
     }
     else
     {
@@ -484,7 +494,11 @@ void bellhopParam::transformParam()
         
     }
 
-
+    std::cout << "[DEBUG transformParam] a.n = " <<   
+    this->bhc_Params->Angles->alpha.n
+            << " NBeams=" << this->NBeams
+            << " angle.size=" << this->angle.size() 
+            << std::endl;
 
 
 }

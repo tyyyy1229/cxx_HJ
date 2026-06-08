@@ -24,8 +24,11 @@ struct ati_bty
 {
     //One depth corresponds to one distance
     float x;
-    float depth; 
-    
+    float depth;
+    float alphaR = 0.0f;   // 海底压缩波声速 (m/s), 0=使用全局 bottomLine
+    float alphaI = 0.0f;   // 海底压缩波衰减 (dB/λ), 0=使用全局 bottomLine
+    float rho    = 0.0f;   // 海底密度 (g/cm³), 0=使用全局 bottomLine
+
 };
 
 
