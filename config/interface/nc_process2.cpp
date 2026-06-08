@@ -639,6 +639,13 @@ NcProcessResult extractSliceFromGrid(const LocalEnvGrid& grid,
     for (const auto& pt : profileSlice) {
         if (!pt.is_valid) continue;
 
+        // 海底深度不足 10 米 → 截断当前剖面
+        if (pt.bty_val < 10.0f) {
+            std::cout << "[Slice] 深度 < 10m (bty=" << pt.bty_val
+                      << "m @ dist=" << pt.dist << "m)，截断剖面" << std::endl;
+            break;
+        }
+
         SSP ssp;
         ssp.Distance = static_cast<float>(pt.dist / 1000.0);   // m → km
         ssp.zSSPV    = grid.lev;                                 // 深度轴（米）
