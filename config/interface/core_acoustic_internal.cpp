@@ -56,7 +56,7 @@ void configureCommonBellhopParams(
     std::vector<SSP> sspList = slice.sspList;
     float maxSspDepth = slice.maxSspDepth;
     float maxBtyDepth = slice.maxBtyDepth;
-    float targetDepth  = std::max(maxBtyDepth, maxSspDepth) * 1.05f;
+    float targetDepth  = maxBtyDepth * 1.05f;
 
     // ---- 每个剖面独立用斜率外推填充末尾 NaN ----
     if (!sspList.empty()) {
@@ -82,7 +82,7 @@ void configureCommonBellhopParams(
     }
 
     // SSP 深度层不足以覆盖海底时，线性外推一层
-    if (maxSspDepth < targetDepth && !sspList.empty()) {
+    if (maxSspDepth < maxBtyDepth && !sspList.empty()) {
         std::cout << "[SSP延伸] maxSsp=" << maxSspDepth << " maxBty=" << maxBtyDepth
                   << " target=" << targetDepth
                   << " → 每个剖面追加1层 (共" << sspList.size() << "个剖面)" << std::endl;

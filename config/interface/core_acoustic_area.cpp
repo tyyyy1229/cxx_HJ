@@ -125,6 +125,8 @@ for (int lonIdx = 0; lonIdx < nLon; ++lonIdx) {
 
             double srcLon = result.lonGrid[lonIdx];
             double srcLat = result.latGrid[latIdx];
+            std::cout << "\n[Area] 网格点 [" << (lonIdx * nLat + latIdx + 1) << "/"
+                      << (nLon * nLat) << "] (" << srcLon << "," << srcLat << ")" << std::endl;
 
             LocalEnvGrid grid = buildLocalEnvGrid(cache, srcLon, srcLat, cfg.maxRange);
             if (!grid.built) {

@@ -394,7 +394,29 @@ void processLocalOnDemandInterpolate(
             size_t grid_idx = j * Nx + i;
 
             grid_bty[grid_idx] = interpolate2D(bty_tree, bty_cloud, query_x, query_y);
-            grid_sed[grid_idx] = interpolate2D(sed_tree, sed_cloud, query_x, query_y);
+            // 底质类型编号属于分类变量，不能使用 IDW 连续插值。
+            // 这里采用精确最近邻，并使用接近 SED 原始分辨率的距离阈值。
+            if (sed_cloud.pts.empty()) {
+                grid_sed[grid_idx] = -9999.0f;
+            } else {
+                const size_t num_sed_nn = 1;
+                size_t sed_index[num_sed_nn];
+                float  sed_dist_sq[num_sed_nn];
+
+                nanoflann::KNNResultSet<float> sedResultSet(num_sed_nn);
+                sedResultSet.init(sed_index, sed_dist_sq);
+
+                float sed_query[2] = { query_x, query_y };
+
+                bool sed_ok = sed_tree.findNeighbors(
+                    sedResultSet, sed_query, nanoflann::SearchParameters());
+
+                const float MAX_SED_NN_DIST = 5000.0f;
+                if (!sed_ok || std::sqrt(sed_dist_sq[0]) > MAX_SED_NN_DIST)
+                    grid_sed[grid_idx] = -9999.0f;
+                else
+                    grid_sed[grid_idx] = sed_cloud.pts[sed_index[0]].value;
+            }
 
             // 45纵向水听器深度轴层复用定位句柄
             const size_t num_closest = 4; size_t out_indices[num_closest]; float out_dist_sq[num_closest];
@@ -649,8 +671,69 @@ NcProcessResult extractSliceFromGrid(const LocalEnvGrid& grid,
         SSP ssp;
         ssp.Distance = static_cast<float>(pt.dist / 1000.0);   // m → km
         ssp.zSSPV    = grid.lev;                                 // 深度轴（米）
-        ssp.cSSPV    = pt.ssp_prof;                              // 声速（m/s）
+
+        // NaN 填充：用前后有效值的深度-声速斜率插值/外推
+        std::vector<float> cleaned = pt.ssp_prof;
+        const auto& z = grid.lev;  // 深度轴
+        size_t nz = cleaned.size();
+
+        // 找第一个有效值
+        int firstValid = -1;
+        for (size_t k = 0; k < nz; ++k) { if (std::isfinite(cleaned[k])) { firstValid = (int)k; break; } }
+        if (firstValid < 0) {
+            // 全为 NaN → 填 1500
+            for (float& v : cleaned) v = 1500.0f;
+        } else {
+            // 开头的 NaN 用第一个有效值 fill
+            for (int k = 0; k < firstValid; ++k) cleaned[k] = cleaned[firstValid];
+
+            int lastValid = firstValid;
+            for (size_t k = firstValid + 1; k < nz; ++k) {
+                if (std::isfinite(cleaned[k])) { lastValid = (int)k; continue; }
+
+                // 从 k 开始是一段 NaN, 找这段之后的第一个有效值
+                int nextValid = -1;
+                for (size_t m = k + 1; m < nz; ++m) {
+                    if (std::isfinite(cleaned[m])) { nextValid = (int)m; break; }
+                }
+
+                if (nextValid >= 0) {
+                    // 中间空洞 → 线性插值
+                    float dz = z[nextValid] - z[lastValid];
+                    float slope = (dz != 0.0f) ? (cleaned[nextValid] - cleaned[lastValid]) / dz : 0.0f;
+                    if (!std::isfinite(slope)) slope = 0.0f;
+                    for (size_t m = k; m < (size_t)nextValid; ++m)
+                        cleaned[m] = cleaned[lastValid] + slope * (z[m] - z[lastValid]);
+                    k = nextValid;
+                    lastValid = nextValid;
+                } else {
+                    // 尾部空洞 → 用最后两点斜率外推
+                    float z1 = z[lastValid], c1 = cleaned[lastValid];
+                    float slope = 0.0f;
+                    if (lastValid > 0) {
+                        float z0 = z[lastValid - 1];
+                        float dz = z1 - z0;
+                        if (dz != 0.0f) {
+                            slope = (c1 - cleaned[lastValid - 1]) / dz;
+                            if (!std::isfinite(slope)) slope = 0.0f;
+                        }
+                    }
+                    for (size_t m = k; m < nz; ++m)
+                        cleaned[m] = c1 + slope * (z[m] - z1);
+                    break;
+                }
+            }
+        }
+        ssp.cSSPV = cleaned;
         result.sspList.push_back(ssp);
+
+        {
+            int nanCount = 0;
+            for (float v : cleaned) if (!std::isfinite(v)) ++nanCount;
+            if (nanCount > 0)
+                std::cerr << "[SSP填充] ⚠ 失效! src=(" << cfg.lon_0 << "," << cfg.lat_0
+                          << ") dist=" << pt.dist << "m 仍有" << nanCount << "个NaN" << std::endl;
+        }
 
         ati_bty bty;
         bty.x     = static_cast<float>(pt.dist / 1000.0);       // m → km
