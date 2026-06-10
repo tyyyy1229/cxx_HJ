@@ -237,6 +237,20 @@ SingleAcousticResult computeSingleTL(const SingleAcousticConfig& cfg)
 
         // 6c. TL 计算
         {
+            // 截断适配：若切片被 10m 浅水截断，用实际射程计算，超出部分填 200
+            bool wasTruncated = (!slice.btyPts.empty()
+                                 && slice.btyPts.size() < static_cast<size_t>(numRangePts));
+            double actualMaxRange = cfg.maxRange;
+            int    actualNumPts   = numRangePts;
+            double actualRBox     = rBox;
+            if (wasTruncated) {
+                actualMaxRange = slice.btyPts.back().x * 1000.0f;
+                actualRBox     = actualMaxRange / 1000.0;
+                actualNumPts   = std::max(2, static_cast<int>(actualMaxRange / 1000.0 / cfg.receiveRangeInterval) + 1);
+                std::cout << "[Single-6c] 截断适配: maxRange " << cfg.maxRange << "→" << actualMaxRange
+                          << "m, Npts " << numRangePts << "→" << actualNumPts << std::endl;
+            }
+
             std::cout << "[Single-6c] 创建 bellhopParam..." << std::endl;
             bellhopParam parm;
             parm.RunType->firstVal->Coherent_TL_C();
@@ -251,7 +265,7 @@ SingleAcousticResult computeSingleTL(const SingleAcousticConfig& cfg)
                 cfg.beamAngle.angleUp, cfg.beamAngle.angleDown,
                 cfg.beamNumber,
                 cfg.sourceDepth, receiveDepth,
-                cfg.maxRange, numRangePts, rBox,
+                actualMaxRange, actualNumPts, actualRBox,
                 slice,
                 cfg.bottomAlphaR, cfg.bottomAlphaI,
                 cfg.bottomBetaR, cfg.bottomBetaI,
@@ -262,8 +276,12 @@ SingleAcousticResult computeSingleTL(const SingleAcousticConfig& cfg)
             std::cout << "[Single-6c] runMod() 返回成功" << std::endl;
 
             auto tl2D = parm.get_TLField();
+            if (wasTruncated) {
+                for (auto& row : tl2D) row.resize(numRangePts, 200.0f);
+            }
             std::cout << "[Single-6c] get_TLField: " << tl2D.size() << " 行";
             if (!tl2D.empty()) std::cout << " × " << tl2D[0].size() << " 列";
+            if (wasTruncated) std::cout << " (截断填充200)";
             std::cout << std::endl;
 
             // 校验 TL

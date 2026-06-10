@@ -195,6 +195,18 @@ std::cerr << "[Area] 切片失败 @ " << srcLon << "," << srcLat
                     std::cout << std::endl;
                 }
 
+                // 截断适配：若切片被 10m 浅水截断，用实际射程计算，超出部分填 200
+                bool wasTruncated = (!slice.btyPts.empty()
+                                     && slice.btyPts.size() < static_cast<size_t>(numRangePts));
+                double actualMaxRange = cfg.maxRange;
+                int    actualNumPts   = numRangePts;
+                double actualRBox     = rBox;
+                if (wasTruncated) {
+                    actualMaxRange = slice.btyPts.back().x * 1000.0f;
+                    actualRBox     = actualMaxRange / 1000.0;
+                    actualNumPts   = std::max(2, static_cast<int>(actualMaxRange / 1000.0 / cfg.receiveRangeInterval) + 1);
+                }
+
                 bellhopParam parm;
                 if (cfg.isCoherent) {
                     parm.RunType->firstVal->Coherent_TL_C();
@@ -206,22 +218,24 @@ std::cerr << "[Area] 切片失败 @ " << srcLon << "," << srcLat
                 parm.RunType->forthVal->NoneOption();
                 parm.RunType->fifthVal->NoneOption();
 
-                configureCommonBellhopParams(parm,
-                    cfg.freq, cfg.isCoherent,
-                    cfg.beamAngle.angleUp, cfg.beamAngle.angleDown,
-                    cfg.beamNumber,
-                    cfg.sourceDepth, rdList,     // set_RD(rdMax, rdNum)
-                    cfg.maxRange, numRangePts, rBox,
-                    slice,
-                    cfg.bottomAlphaR, cfg.bottomAlphaI,
-                    cfg.bottomBetaR, cfg.bottomBetaI,
-                    cfg.bottomRho, cfg.bottomDepth);
-                parm.runMod();
+                try {
+                    configureCommonBellhopParams(parm,
+                        cfg.freq, cfg.isCoherent,
+                        cfg.beamAngle.angleUp, cfg.beamAngle.angleDown,
+                        cfg.beamNumber,
+                        cfg.sourceDepth, rdList,
+                        actualMaxRange, actualNumPts, actualRBox,
+                        slice,
+                        cfg.bottomAlphaR, cfg.bottomAlphaI,
+                        cfg.bottomBetaR, cfg.bottomBetaI,
+                        cfg.bottomRho, cfg.bottomDepth);
+                    parm.runMod();
 
-                auto tl2D = parm.get_TLField();
+                    auto tl2D = parm.get_TLField();
+                    if (wasTruncated) {
+                        for (auto& row : tl2D) row.resize(numRangePts, 200.0f);
+                    }
 
-{
-                    // tl2D: [numOutDepth][numRange], 输出布局: [lon][lat][dir][range][depth]
                     for (int rIdx = 0; rIdx < numRangePts; ++rIdx) {
                         for (int outD = 0; outD < numOutDepth; ++outD) {
                             int levRow = depthRows[outD];
@@ -233,6 +247,9 @@ std::cerr << "[Area] 切片失败 @ " << srcLon << "," << srcLat
                             result.tlData[idx] = static_cast<double>(row[rIdx]);
                         }
                     }
+                } catch (const std::exception& e) {
+                    std::cerr << "[Area] Bellhop 计算失败 @ (" << srcLon << "," << srcLat
+                              << ") dir=" << alphaClient << "° : " << e.what() << std::endl;
                 }
             } // dirIdx
 

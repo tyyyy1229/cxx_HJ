@@ -58,6 +58,29 @@ void configureCommonBellhopParams(
     float maxBtyDepth = slice.maxBtyDepth;
     float targetDepth  = std::max(maxBtyDepth, maxSspDepth) * 1.05f;
 
+    // ---- 每个剖面独立用斜率外推填充末尾 NaN ----
+    if (!sspList.empty()) {
+        bool anyFilled = false;
+        for (auto& ssp : sspList) {
+            size_t n = ssp.cSSPV.size();
+            size_t valid = n;
+            while (valid > 0 && !std::isfinite(ssp.cSSPV[valid - 1])) --valid;
+            if (valid < 2) continue;   // 不足2个有效点，无法算斜率
+            if (valid == n) continue;  // 无NaN，无需填充
+
+            float z1 = ssp.zSSPV[valid - 2], c1 = ssp.cSSPV[valid - 2];
+            float z2 = ssp.zSSPV[valid - 1], c2 = ssp.cSSPV[valid - 1];
+            float slope = (c2 - c1) / (z2 - z1);
+
+            for (size_t i = valid; i < n; ++i)
+                ssp.cSSPV[i] = c2 + slope * (ssp.zSSPV[i] - z2);
+
+            anyFilled = true;
+        }
+        if (anyFilled)
+            std::cout << "[SSP填充] 各剖面独立斜率外推填充末尾NaN" << std::endl;
+    }
+
     // SSP 深度层不足以覆盖海底时，线性外推一层
     if (maxSspDepth < targetDepth && !sspList.empty()) {
         std::cout << "[SSP延伸] maxSsp=" << maxSspDepth << " maxBty=" << maxBtyDepth
